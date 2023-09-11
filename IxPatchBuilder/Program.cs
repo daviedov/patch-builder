@@ -1,13 +1,15 @@
-﻿// See https://aka.ms/new-console-template for more information
+﻿using IxPatchBuilder;
 
-using IxPatchBuilder;
+if (args.Length != 3)
+{
+	Console.WriteLine("Usage:");
+	Console.WriteLine("IxPatchBuilder <path_to_old_folder> <path_to_new_folder> <path_to_patch_folder>");
+	return;
+}
 
 Console.WriteLine($"Start time: {DateTime.Now}");
-string folder1Path = @"D:\10\4.3\Product"; // Replace with the path to the first folder
-string folder2Path = @"D:\10\Main\Product"; // Replace with the path to the second folder
-string folder3Path = @"D:\10\Patch\Product"; // Replace with the path to the second folder
 Comparer comparer = new Comparer();
 
-comparer.CompareFolders(folder1Path, folder2Path, folder3Path);
-comparer.DeleteEmptyFolders(folder3Path);
+comparer.CompareFolders(args[0], args[1], args[2]);
+comparer.DeleteEmptyFolders(args[2]);
 Console.WriteLine($"End time: {DateTime.Now}");
