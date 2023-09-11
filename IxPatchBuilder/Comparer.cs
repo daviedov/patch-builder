@@ -10,25 +10,93 @@ namespace IxPatchBuilder
 	{
 		string[] patterns = new string[] { @"\[assembly\: AssemblyFileVersion\(""[\d\.]+""\)\]" };
 
-		public void CompareFolders(string folder1Path, string folder2Path, string folder3Path)
+		public void CompareFolders(string oldPath, string newPath, string pathcPath)
 		{
-			string[] files1 = Directory.GetFiles(folder1Path);
+			CompareFilesInFolder(oldPath, newPath, pathcPath);
+			//string[] subdirectories1 = Directory.GetDirectories(folder1Path);
+			string[] newSubdirectories = Directory.GetDirectories(newPath);
+
+			foreach (string newSubdirectory in newSubdirectories)
+			{
+				string newDirectoryName = Path.GetFileName(newSubdirectory);
+				string oldDirectory = Path.Combine(oldPath, newDirectoryName);
+
+				if (Directory.Exists(oldDirectory))
+				{
+					CompareFolders(oldDirectory, newSubdirectory, Path.Combine(pathcPath, newDirectoryName));
+				}
+				else
+				{
+					Console.WriteLine($"Subdirectory {newDirectoryName} does not exist in folder 2.");
+					if (!Directory.Exists(Path.Combine(pathcPath, newDirectoryName)))
+					{
+						Directory.CreateDirectory(Path.Combine(pathcPath, newDirectoryName));
+					}
+					foreach (var srcPath in Directory.GetFiles(newSubdirectory))
+					{
+						//Copy the file from sourcepath and place into mentioned target path, 
+						//Overwrite the file if same file is exist in target path
+
+						string dstPath = Path.Combine(pathcPath, newDirectoryName, Path.GetFileName(srcPath));
+						File.Copy(srcPath, dstPath, true);
+					}
+
+					//File.Copy(subdirectory2, Path.Combine(folder3Path, subdirectoryName), true);
+				}
+			}
+
+		}
+
+		public void CompareFilesInFolder(string oldPath, string newPath, string folder3Path)
+		{
+			if (!Directory.Exists(folder3Path))
+			{
+				Directory.CreateDirectory(folder3Path);
+			}
+
+			string[] newFiles = Directory.GetFiles(newPath);
 
 			Console.WriteLine("Comparing files in two folders...");
 
-			foreach (string file1 in files1)
+			foreach (string newFile in newFiles)
 			{
-				string fileName = Path.GetFileName(file1);
-				string file2 = Path.Combine(folder2Path, fileName);
+				string fileName = Path.GetFileName(newFile);
+				string oldFile = Path.Combine(oldPath, fileName);
 
-				if (File.Exists(file2) && AreFilesEqual(file1, file2))
+				if (File.Exists(oldFile) && AreFilesEqual(newFile, oldFile))
 				{
 					continue;
 				}
 				Console.WriteLine($"{fileName} is different in both folders.");
-				File.Copy(file1, Path.Combine(folder3Path, fileName), true);
+				File.Copy(newFile, Path.Combine(folder3Path, fileName), true);
 			}
 
+		}
+
+		public void DeleteEmptyFolders(string directoryPath)
+		{
+			try
+			{
+				// Get a list of all subdirectories in the specified directory
+				string[] subdirectories = Directory.GetDirectories(directoryPath);
+
+				foreach (string subdirectory in subdirectories)
+				{
+					// Recursively delete empty subdirectories
+					DeleteEmptyFolders(subdirectory);
+
+					// Check if the current subdirectory is empty
+					if (Directory.GetFiles(subdirectory).Length == 0 && Directory.GetDirectories(subdirectory).Length == 0)
+					{
+						// If it's empty, delete the subdirectory
+						Directory.Delete(subdirectory);
+					}
+				}
+			}
+			catch (Exception ex)
+			{
+				Console.WriteLine($"An error occurred: {ex.Message}");
+			}
 		}
 
 		private bool AreFilesEqual(string filePath1, string filePath2)
