@@ -3,72 +3,89 @@ using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using ICSharpCode.Decompiler;
 using ICSharpCode.Decompiler.CSharp;
+using Microsoft.Extensions.Logging;
 
 namespace IxPatchBuilder
 {
 	public class Comparer
 	{
-		string[] patterns = new string[] { @"\[assembly\: AssemblyFileVersion\(""[\d\.]+""\)\]" };
+		private const string _separator = "\r\n";
 
-		public void CompareFolders(string oldPath, string newPath, string pathcPath)
+		private readonly Rules _rules;
+		private readonly ILogger _logger;
+
+		public Comparer(Rules rules, ILogger logger)
 		{
-			CompareFilesInFolder(oldPath, newPath, pathcPath);
-			//string[] subdirectories1 = Directory.GetDirectories(folder1Path);
-			string[] newSubdirectories = Directory.GetDirectories(newPath);
+			_rules = rules;
+			_logger = logger;
+		}
 
-			foreach (string newSubdirectory in newSubdirectories)
+		public void CompareFolders(string pathOld, string pathNew, string pathPatch)
+		{
+			//Compare files
+			CompareFilesInFolder(pathOld, pathNew, pathPatch);
+
+			//Compare subfolders
+			string[] newSubdirectories = Directory.GetDirectories(pathNew);
+
+			foreach (string newDirectory in newSubdirectories)
 			{
-				string newDirectoryName = Path.GetFileName(newSubdirectory);
-				string oldDirectory = Path.Combine(oldPath, newDirectoryName);
+				string newDirectoryName = Path.GetFileName(newDirectory);
+				if (IgnoreFolder((newDirectoryName)))
+				{
+					continue;
+				}
+
+				string oldDirectory = Path.Combine(pathOld, newDirectoryName);
 
 				if (Directory.Exists(oldDirectory))
 				{
-					CompareFolders(oldDirectory, newSubdirectory, Path.Combine(pathcPath, newDirectoryName));
+					CompareFolders(oldDirectory, newDirectory, Path.Combine(pathPatch, newDirectoryName));
 				}
 				else
 				{
-					Console.WriteLine($"Subdirectory {newDirectoryName} does not exist in folder 2.");
-					if (!Directory.Exists(Path.Combine(pathcPath, newDirectoryName)))
+					_logger.LogInformation($"Directory {newDirectoryName} does not exist in old.");
+					if (!Directory.Exists(Path.Combine(pathPatch, newDirectoryName)))
 					{
-						Directory.CreateDirectory(Path.Combine(pathcPath, newDirectoryName));
+						Directory.CreateDirectory(Path.Combine(pathPatch, newDirectoryName));
 					}
-					foreach (var srcPath in Directory.GetFiles(newSubdirectory))
+					foreach (var srcPath in Directory.GetFiles(newDirectory))
 					{
-						//Copy the file from sourcepath and place into mentioned target path, 
-						//Overwrite the file if same file is exist in target path
-
-						string dstPath = Path.Combine(pathcPath, newDirectoryName, Path.GetFileName(srcPath));
+						//Copy the file from new path and place into patch path, 
+						string dstPath = Path.Combine(pathPatch, newDirectoryName, Path.GetFileName(srcPath));
 						File.Copy(srcPath, dstPath, true);
 					}
-
-					//File.Copy(subdirectory2, Path.Combine(folder3Path, subdirectoryName), true);
 				}
 			}
 
 		}
 
-		public void CompareFilesInFolder(string oldPath, string newPath, string folder3Path)
+		public void CompareFilesInFolder(string pathOld, string pathNew, string pathPatch)
 		{
-			if (!Directory.Exists(folder3Path))
+			if (!Directory.Exists(pathPatch))
 			{
-				Directory.CreateDirectory(folder3Path);
+				Directory.CreateDirectory(pathPatch);
 			}
 
-			string[] newFiles = Directory.GetFiles(newPath);
-
-			Console.WriteLine("Comparing files in two folders...");
+			string[] newFiles = Directory.GetFiles(pathNew);
 
 			foreach (string newFile in newFiles)
 			{
 				string fileName = Path.GetFileName(newFile);
-				string oldFile = Path.Combine(oldPath, fileName);
+				if (IgnoreFile(fileName))
+				{
+					_logger.LogInformation($"Ignore file {fileName}.");
+					continue;
+				}
+
+				string oldFile = Path.Combine(pathOld, fileName);
 
 				if (File.Exists(oldFile) && AreFilesEqual(newFile, oldFile))
 				{
 					continue;
 				}
-				Console.WriteLine($"{fileName} is different in both folders.");
-				File.Copy(newFile, Path.Combine(folder3Path, fileName), true);
+				_logger.LogInformation($"{fileName} is different in both folders.");
+				File.Copy(newFile, Path.Combine(pathPatch, fileName), true);
 			}
 
 		}
@@ -78,24 +95,24 @@ namespace IxPatchBuilder
 			try
 			{
 				// Get a list of all subdirectories in the specified directory
-				string[] subdirectories = Directory.GetDirectories(directoryPath);
+				string[] subDirectories = Directory.GetDirectories(directoryPath);
 
-				foreach (string subdirectory in subdirectories)
+				foreach (string directory in subDirectories)
 				{
 					// Recursively delete empty subdirectories
-					DeleteEmptyFolders(subdirectory);
+					DeleteEmptyFolders(directory);
 
-					// Check if the current subdirectory is empty
-					if (Directory.GetFiles(subdirectory).Length == 0 && Directory.GetDirectories(subdirectory).Length == 0)
+					// Check if the current directory is empty
+					if (Directory.GetFiles(directory).Length == 0 && Directory.GetDirectories(directory).Length == 0)
 					{
-						// If it's empty, delete the subdirectory
-						Directory.Delete(subdirectory);
+						// If it's empty, delete the directory
+						Directory.Delete(directory);
 					}
 				}
 			}
 			catch (Exception ex)
 			{
-				Console.WriteLine($"An error occurred: {ex.Message}");
+				_logger.LogError($"An error occurred: {ex.Message}");
 			}
 		}
 
@@ -116,46 +133,54 @@ namespace IxPatchBuilder
 
 		private bool AreFilesSourceEqual(string filePath1, string filePath2)
 		{
+			string fileName = Path.GetFileName(filePath1);
+			if (IgnoreDecompileFile(fileName))
+			{
+				_logger.LogInformation($"Ignore decompile file {fileName}.");
+				return false;
+			}
+
 			try
 			{
 				var decompiler1 = new CSharpDecompiler(filePath1, new DecompilerSettings());
 				var decompiler2 = new CSharpDecompiler(filePath2, new DecompilerSettings());
-				string[] code1 = decompiler1.DecompileWholeModuleAsString().Split("\r\n");
-				string[] code2 = decompiler2.DecompileWholeModuleAsString().Split("\r\n");
+				string[] code1 = decompiler1.DecompileWholeModuleAsString().Split(_separator);
+				string[] code2 = decompiler2.DecompileWholeModuleAsString().Split(_separator);
 				string[] mismatches = code2.Except(code1).ToArray();
-				mismatches = ExceptionRules(mismatches);
+				mismatches = DecompileExceptionRules(mismatches, fileName);
 
 				if (mismatches.Length > 0)
 				{
-					Console.WriteLine(filePath2);
+					_logger.LogTrace(filePath2);
 					foreach (var m in mismatches)
 					{
-						Console.WriteLine(m);
+						_logger.LogTrace(m);
 					}
-					Console.WriteLine();
+					_logger.LogTrace(String.Empty);
 				}
 
 				return mismatches.Length == 0;
 			}
 			catch (Exception ex)
 			{
+				_logger.LogError($"An error occurred when decompile {fileName}: {ex.Message}");
 				return false;
 			}
 		}
 
-		private string[] ExceptionRules(string[] mismatches)
+		private string[] DecompileExceptionRules(string[] mismatches, string fileName)
 		{
 			List<string> realMismatches = new List<string>();
 			foreach (string mismatch in mismatches)
 			{
 				bool ignore = false;
-				foreach (string pattern in patterns)
+				foreach (string pattern in _rules.Decompile.IgnorePatterns)
 				{
 					Match m = Regex.Match(mismatch, pattern, RegexOptions.IgnoreCase);
 					if (m.Success)
 					{
 						ignore = true;
-						Console.WriteLine("Ignore mismatch '{0}.", mismatch);
+						_logger.LogTrace("Ignore mismatch '{0} in file {1}.", mismatch, fileName);
 						break;
 					}
 				}
@@ -168,6 +193,21 @@ namespace IxPatchBuilder
 				realMismatches.Add(mismatch);
 			}
 			return realMismatches.ToArray();
+		}
+
+		private bool IgnoreFile(string fileName)
+		{
+			return _rules.IgnoreFilePatterns.Select(pattern => Regex.Match(fileName, pattern, RegexOptions.IgnoreCase)).Any(m => m.Success);
+		}
+
+		private bool IgnoreFolder(string folderName)
+		{
+			return _rules.IgnoreFolderPatterns.Select(pattern => Regex.Match(folderName, pattern, RegexOptions.IgnoreCase)).Any(m => m.Success);
+		}
+
+		private bool IgnoreDecompileFile(string fileName)
+		{
+			return !_rules.Decompile.FilePatterns.Select(pattern => Regex.Match(fileName, pattern, RegexOptions.IgnoreCase)).Any(m => m.Success);
 		}
 	}
 }
