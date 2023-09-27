@@ -142,8 +142,8 @@ namespace IxPatchBuilder
 
 			try
 			{
-				var decompiler1 = new CSharpDecompiler(filePath1, new DecompilerSettings());
-				var decompiler2 = new CSharpDecompiler(filePath2, new DecompilerSettings());
+				var decompiler1 = new CSharpDecompiler(filePath1, new DecompilerSettings() { ThrowOnAssemblyResolveErrors = false });
+				var decompiler2 = new CSharpDecompiler(filePath2, new DecompilerSettings() { ThrowOnAssemblyResolveErrors = false });
 				string[] code1 = decompiler1.DecompileWholeModuleAsString().Split(_separator);
 				string[] code2 = decompiler2.DecompileWholeModuleAsString().Split(_separator);
 				string[] mismatches = code2.Except(code1).ToArray();

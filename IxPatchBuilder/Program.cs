@@ -6,6 +6,7 @@ const string settingsFile = "appsettings.json";
 const string sectionPaths = "paths";
 const string sectionRules = "rules";
 const string sectionLogLevel = "logLevel";
+const string sectionLogFile = "logFile";
 
 IConfiguration config = new ConfigurationBuilder()
 	.AddJsonFile(settingsFile)
@@ -23,8 +24,13 @@ if (rules == null)
 	return;
 }
 LogLevel? logLevel = config.GetSection(sectionLogLevel).Get<LogLevel>();
+string? fileName = config.GetSection(sectionLogFile).Get<string>();
+if (!string.IsNullOrWhiteSpace(fileName))
+{
+	fileName = string.Format(fileName, DateTime.Now);
+}
 
-ConsoleLogger logger = new ConsoleLogger(logLevel ?? LogLevel.Trace);
+ConsoleLogger logger = new ConsoleLogger(logLevel ?? LogLevel.Trace, fileName ?? String.Empty);
 
 DateTime timeStart = DateTime.Now;
 logger.LogInformation($"Start time: {timeStart}");

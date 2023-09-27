@@ -5,10 +5,12 @@ namespace IxPatchBuilder
 	public class ConsoleLogger : ILogger
 	{
 		private readonly LogLevel _logLevel;
+		private readonly string _fileName;
 
-		public ConsoleLogger(LogLevel logLevel)
+		public ConsoleLogger(LogLevel logLevel, string fileName)
 		{
 			_logLevel = logLevel;
+			_fileName = fileName;
 		}
 
 		public IDisposable BeginScope<TState>(TState state) => default;
@@ -18,7 +20,12 @@ namespace IxPatchBuilder
 			string formattedString = formatter(state, exception);
 			if (logLevel >= _logLevel)
 			{
-				Console.WriteLine(@"{0}: {1}", logLevel, formattedString);
+				string logRow = @$"{DateTime.Now:T}: {logLevel}: {formattedString}";
+				Console.WriteLine(logRow);
+				if (!string.IsNullOrWhiteSpace(_fileName))
+				{
+					File.AppendAllText(_fileName, $"{logRow}\r\n");
+				}
 			}
 		}
 	}
