@@ -20,10 +20,11 @@ namespace IxPatchBuilder
 			_logger = logger;
 		}
 
-		public void CompareFolders(string pathOld, string pathNew, string pathPatch)
+		public int CompareFolders(string pathOld, string pathNew, string pathPatch, string navigation)
 		{
+			int differencesFound = 0;
 			//Compare files
-			CompareFilesInFolder(pathOld, pathNew, pathPatch);
+			CompareFilesInFolder(pathOld, pathNew, pathPatch, navigation);
 
 			//Compare subfolders
 			string[] newSubdirectories = Directory.GetDirectories(pathNew);
@@ -40,11 +41,11 @@ namespace IxPatchBuilder
 
 				if (Directory.Exists(oldDirectory))
 				{
-					CompareFolders(oldDirectory, newDirectory, Path.Combine(pathPatch, newDirectoryName));
+					differencesFound += CompareFolders(oldDirectory, newDirectory, Path.Combine(pathPatch, newDirectoryName), $"{navigation}{newDirectoryName}\\");
 				}
 				else
 				{
-					_logger.LogInformation($"Directory {newDirectoryName} does not exist in old.");
+					_logger.LogInformation($"Directory {navigation}{newDirectoryName} does not exist in old.");
 					if (!Directory.Exists(Path.Combine(pathPatch, newDirectoryName)))
 					{
 						Directory.CreateDirectory(Path.Combine(pathPatch, newDirectoryName));
@@ -54,16 +55,19 @@ namespace IxPatchBuilder
 						//Copy the file from new path and place into patch path, 
 						string dstPath = Path.Combine(pathPatch, newDirectoryName, Path.GetFileName(srcPath));
 						File.Copy(srcPath, dstPath, true);
+						differencesFound++;
 					}
 				}
 			}
-
+			return differencesFound;
 		}
 
-		public void CompareFilesInFolder(string pathOld, string pathNew, string pathPatch)
+		public int CompareFilesInFolder(string pathOld, string pathNew, string pathPatch, string navigation)
 		{
+			int differencesFound = 0;
 			if (!Directory.Exists(pathPatch))
 			{
+				differencesFound++;
 				Directory.CreateDirectory(pathPatch);
 			}
 
@@ -74,20 +78,22 @@ namespace IxPatchBuilder
 				string fileName = Path.GetFileName(newFile);
 				if (IgnoreFile(fileName))
 				{
-					_logger.LogInformation($"Ignore file {fileName}.");
+					_logger.LogInformation($"Ignore file {navigation}{fileName}.");
 					continue;
 				}
 
 				string oldFile = Path.Combine(pathOld, fileName);
 
-				if (File.Exists(oldFile) && AreFilesEqual(newFile, oldFile))
+				if (File.Exists(oldFile) && AreFilesEqual(newFile, oldFile, navigation))
 				{
 					continue;
 				}
-				_logger.LogInformation($"{fileName} is different in both folders.");
+				_logger.LogInformation($"{navigation}{fileName} is different in both folders.");
 				File.Copy(newFile, Path.Combine(pathPatch, fileName), true);
+				differencesFound++;
 			}
 
+			return differencesFound;
 		}
 
 		public void DeleteEmptyFolders(string directoryPath)
@@ -116,7 +122,7 @@ namespace IxPatchBuilder
 			}
 		}
 
-		private bool AreFilesEqual(string filePath1, string filePath2)
+		private bool AreFilesEqual(string filePath1, string filePath2, string navigation)
 		{
 			using var hash1 = SHA256.Create();
 			using var hash2 = SHA256.Create();
@@ -128,15 +134,15 @@ namespace IxPatchBuilder
 			{
 				return true;
 			}
-			return AreFilesSourceEqual(filePath1, filePath2);
+			return AreFilesSourceEqual(filePath1, filePath2, navigation);
 		}
 
-		private bool AreFilesSourceEqual(string filePath1, string filePath2)
+		private bool AreFilesSourceEqual(string filePath1, string filePath2, string navigation)
 		{
 			string fileName = Path.GetFileName(filePath1);
 			if (IgnoreDecompileFile(fileName))
 			{
-				_logger.LogInformation($"Ignore decompile file {fileName}.");
+				_logger.LogInformation($"Ignore decompile file {navigation}{fileName}.");
 				return false;
 			}
 
@@ -163,7 +169,7 @@ namespace IxPatchBuilder
 			}
 			catch (Exception ex)
 			{
-				_logger.LogError($"An error occurred when decompile {fileName}: {ex.Message}");
+				_logger.LogError($"An error occurred when decompile {navigation}{fileName}: {ex.Message}");
 				return false;
 			}
 		}

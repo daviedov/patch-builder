@@ -20,7 +20,7 @@ namespace IxPatchBuilder
 			string formattedString = formatter(state, exception);
 			if (logLevel >= _logLevel)
 			{
-				string logRow = @$"{DateTime.Now:T}: {logLevel}: {formattedString}";
+				string logRow = @$"{DateTime.Now:HH:mm:ss.fff}: {logLevel}: {formattedString}";
 				Console.WriteLine(logRow);
 				if (!string.IsNullOrWhiteSpace(_fileName))
 				{
